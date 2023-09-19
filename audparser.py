@@ -147,6 +147,7 @@ def main():
 		print("Filter by client: ", parsed_args.client)
 	if parsed_args.typecon:
 		print("Filter by type connection: ", parsed_args.typecon)
+	
 	result = []
 	for file_name in input_files:
 		result = result + parse_file(file_name)
