@@ -72,7 +72,8 @@ def parse_file(filename):
 		block = f.read(block_size)
 		while block != '':
 			item = take_block(block[0:len(block):2])
-			if all([parsing_for_its_in_args([item[7], item[14]], parsed_args.terminal),
+			if all([parsing_for_its_in_args([item[5]], parsed_args.typecon),
+					parsing_for_its_in_args([item[7], item[14]], parsed_args.terminal),
 					parsing_for_its_in_args([item[8]], parsed_args.login),
 					parsing_for_its_in_args([item[9], item[13]], parsed_args.tcode),
 					parsing_for_its_in_args([item[10]], parsed_args.report),
@@ -93,7 +94,20 @@ def print_results(res):
 		print()
 
 
+def csv_export(res, filename):
+	res.insert(0, remove_extra_cols(
+		["EventID", "Date", "Time", "OSProcID", "SAPProcID", "TypeConn", "SAPIDHEX", "Terminal",
+		"Login", "T-Code", "Report", "Client", "SessionId", "Parameters", "FQDN"]))
+	with open(f'{filename}.csv', 'w') as c:
+		for row in res:
+			for col in row:
+				c.write(f"{col};")
+			c.write("\n")
+		c.close()
+
+
 def excel_export(res, filename):
+#	возможно, надо сделать чтобы выводило по миллиону строк в один файл. или на один лист.
 	df = pd.DataFrame(res)
 	writer = pd.ExcelWriter(f'{filename}.xlsx', engine='xlsxwriter')
 	df.to_excel(writer, sheet_name=f'{filename}', index=False)
@@ -135,6 +149,13 @@ def main():
 	else:
 		print("For printing on display plz use -print option")
 	
+	if parsed_args.csv:
+		print("Export to csv is started...")
+		csv_export(result, parsed_args.export_name)
+		print("and was finished!")
+	else:
+		print("For exporting to excel plz use -excel option")
+	
 	if parsed_args.excel:
 		print("Export to excel is started...")
 		excel_export(result, parsed_args.export_name)
@@ -160,8 +181,11 @@ if __name__ == '__main__':
 						help='It tries to search this in field report, as substring')
 	parser.add_argument('-client', metavar='000 300', nargs='*',
 						help='It tries to search this in field client, as substring')
+	parser.add_argument('-typecon', metavar='D B', nargs='*',
+						help='It tries to search this in field typecon, as substring')
 	parser.add_argument('-print', help='Print all', action='store_true')
 	parser.add_argument('-excel', help='Enable export to excel with default name results.xlsx', action='store_true')
+	parser.add_argument('-csv', help='Enable export to csv with default name results.csv', action='store_true')
 	parser.add_argument('-export_name', metavar='results', help='use this name for file', default="results")
 	parser.add_argument('-aud', nargs='*', help='parse all *.AUD from this directory or file, "./" by default',
 						default=".")
