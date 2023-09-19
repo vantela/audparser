@@ -107,10 +107,16 @@ def csv_export(res, filename):
 
 
 def excel_export(res, filename):
-#	возможно, надо сделать чтобы выводило по миллиону строк в один файл. или на один лист.
-	df = pd.DataFrame(res)
+	rows_per_sheet = 1_000_000
+	number_of_sheets = (len(res) // rows_per_sheet) + 1
+	start_index = 0
+	end_index = rows_per_sheet
 	writer = pd.ExcelWriter(f'{filename}.xlsx', engine='xlsxwriter')
-	df.to_excel(writer, sheet_name=f'{filename}', index=False)
+	for i in range(number_of_sheets):
+		df = pd.DataFrame(list(res[start_index:end_index]))
+		df.to_excel(writer, index=False, header=False, sheet_name='sheet_' + str(i))
+		start_index = end_index
+		end_index = end_index + rows_per_sheet
 	writer.close()
 
 
@@ -139,6 +145,8 @@ def main():
 		print("Filter by report: ", parsed_args.report)
 	if parsed_args.client:
 		print("Filter by client: ", parsed_args.client)
+	if parsed_args.typecon:
+		print("Filter by type connection: ", parsed_args.typecon)
 	result = []
 	for file_name in input_files:
 		result = result + parse_file(file_name)
@@ -154,7 +162,7 @@ def main():
 		csv_export(result, parsed_args.export_name)
 		print("and was finished!")
 	else:
-		print("For exporting to excel plz use -excel option")
+		print("For exporting to csv plz use -csv option")
 	
 	if parsed_args.excel:
 		print("Export to excel is started...")
