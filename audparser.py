@@ -102,7 +102,7 @@ def excel_export(res, filename):
 
 def main():
 	input_files = set()
-	for name in parsed_args.source_names:
+	for name in parsed_args.aud:
 		if os.path.isfile(name):
 			input_files.add(os.path.abspath(name))
 		elif os.path.isdir(name):
@@ -137,7 +137,7 @@ def main():
 	
 	if parsed_args.excel:
 		print("Export to excel is started...")
-		excel_export(result, parsed_args.excel_file_name)
+		excel_export(result, parsed_args.export_name)
 		print("and was finished!")
 	else:
 		print("For exporting to excel plz use -excel option")
@@ -162,8 +162,8 @@ if __name__ == '__main__':
 						help='It tries to search this in field client, as substring')
 	parser.add_argument('-print', help='Print all', action='store_true')
 	parser.add_argument('-excel', help='Enable export to excel with default name results.xlsx', action='store_true')
-	parser.add_argument('-excel_file_name', metavar='results', help='use this name for excel file', default="results")
-	parser.add_argument('source_names', nargs='*', help='parse all *.AUD from this directory or file, "./" by default',
+	parser.add_argument('-export_name', metavar='results', help='use this name for file', default="results")
+	parser.add_argument('-aud', nargs='*', help='parse all *.AUD from this directory or file, "./" by default',
 						default=".")
 	parsed_args = parser.parse_args()
 	main()
