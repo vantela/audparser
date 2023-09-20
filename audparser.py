@@ -122,6 +122,17 @@ def excel_export(res, filename):
 	writer.close()
 
 
+def export_result(res):
+	if parsed_args.csv:
+		csv_export(res, parsed_args.export_name)
+
+	if parsed_args.excel:
+		excel_export(res, parsed_args.export_name)
+
+	if parsed_args.print:
+		print_results(res)
+
+
 def main():
 	input_files = set()
 	for name in parsed_args.aud:
@@ -150,33 +161,26 @@ def main():
 	if parsed_args.typecon:
 		print("Filter by type connection: ", parsed_args.typecon)
 	
-	result = []
+	if parsed_args.header:
+		result = [remove_extra_cols(list_of_cols)]
+	else:
+		result = []
+	
 	for file_name in input_files:
 		result = result + parse_file(file_name)
 	
 	print("Collected rows:", len(result))
+	export_result(result)
 	
-	result.insert(0, remove_extra_cols(list_of_cols))
-	
-	if parsed_args.print:
-		print_results(result)
-	else:
-		print("For printing on display plz use -print option")
-	
-	if parsed_args.csv:
-		print("Export to csv is started...")
-		csv_export(result, parsed_args.export_name)
-		print("and was finished!")
-	else:
+	if not parsed_args.csv:
 		print("For exporting to csv plz use -csv option")
 	
-	if parsed_args.excel:
-		print("Export to excel is started...")
-		excel_export(result, parsed_args.export_name)
-		print("and was finished!")
-	else:
+	if not parsed_args.excel:
 		print("For exporting to excel plz use -excel option")
-
+		
+	if not parsed_args.print:
+		print("For printing on display plz use -print option")
+	
 
 if __name__ == '__main__':
 	parser = argparse.ArgumentParser()
@@ -196,10 +200,12 @@ if __name__ == '__main__':
 						help='It tries to search this in field client, as substring')
 	parser.add_argument('-typecon', metavar='D B', nargs='*',
 						help='It tries to search this in field typecon, as substring')
+	parser.add_argument('-header', help='Add header for cols', action='store_true')
 	parser.add_argument('-print', help='Print all', action='store_true')
 	parser.add_argument('-excel', help='Enable export to excel with default name results.xlsx', action='store_true')
 	parser.add_argument('-csv', help='Enable export to csv with default name results.csv', action='store_true')
 	parser.add_argument('-export_name', metavar='results', help='use this name for file', default="results")
+	parser.add_argument('-overwrite', help='Overwrite existing files with parsing results, default: append', action='store_true')
 	parser.add_argument('-aud', nargs='*', help='parse all *.AUD from this directory or file, "./" by default',
 						default=".")
 	parsed_args = parser.parse_args()
