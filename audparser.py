@@ -3,6 +3,42 @@ import os
 import sys
 import argparse
 import pandas as pd
+from openpyxl.cell.cell import ILLEGAL_CHARACTERS_RE
+
+cols_dict = {'date': 0, 'time': 1, 'client': 2, 'login': 3, 'terminal': 4, 'tcode': 5, 'report': 6,
+				'typecon': 7, 'param': 8, 'eventid': 9, 'osid': 10, 'sapid': 11, 'sapidhex': 12, 'termcut': 13, 'sessionid': 14}
+
+list_of_cols = ["Date", "Time", "Client", "Login", "Terminal", "T-Code", "Report", "TypeConn",
+				"Parameters", "EventID", "OSProcID", "SAPProcID", "SAPIDHEX", "termcut", "SessionId"]
+
+def take_block(block):
+	return [
+			block[4:8] + '.' + block[8:10] + '.' + block[10:12],        # Date
+			block[12:14] + ':' + block[14:16] + ':' + block[16:18],     # Time
+			block[112:115],                                             # Client
+			block[40:52].strip(),                                       # login
+			block[180:].strip(),                                        # Terminal
+			block[52:72].strip(),                                       # T-code
+			block[72:112].strip(),                                      # Report
+			block[30],                                                  # Type of connection (D, B)
+			ILLEGAL_CHARACTERS_RE.sub(r'', block[116:180].strip()),     # Variable message data 1&2&3 like param
+			block[1:4],                                                 # EventId
+			block[18:25],                                               # OS Process ID
+			block[25:30],                                               # SAP Process ID
+			block[31],                                                  # SAP Process ID in hex
+			block[32:40].strip(),                                       # Term-cut
+			block[115]                                                  # SessionID
+	]
+
+def parsing_for_its_in_args(its, args):
+	if args:
+		for arg in args:
+			for it in its:
+				if arg in it:
+					return True
+		return False
+	else:
+		return True
 
 
 def detect_version(file_name):
@@ -23,38 +59,8 @@ def detect_version(file_name):
 		sys.exit()
 
 
-def take_block(block):
-	return [block[1:4],                                                 # (1) (?) EventId
-			block[4:8] + '.' + block[8:10] + '.' + block[10:12],        # (2)  Date
-			block[12:14] + ':' + block[14:16] + ':' + block[16:18],     # (3)  Time
-			block[18:25],                                               # (4) (?) OS Process ID
-			block[25:30],                                               # (5) (?) SAP Process ID
-			block[30],                                                  # (6)  Type of connection (Dialog, RFC, etc.)
-			block[31],                                                  # (7) (?) SAP Process ID in hex
-			block[32:40].strip(),                                       # (8)  Terminal
-			block[40:52].strip(),                                       # (9)  User LOGIN
-			block[52:72].strip(),                                       # (10) Transaction
-			block[72:112].strip(),                                      # (11) Report
-			block[112:115],                                             # (12) Client
-			block[115],                                                 # (13) (?) SessionID
-			block[116:180].strip(),                                     # (14) Transaction parameters
-			block[180:].strip()]                                        # (15) IP/FQDN
-
-
-def parsing_for_its_in_args(its, args):
-	if args:
-		for arg in args:
-			for it in its:
-				if arg in it:
-					return True
-		return False
-	else:
-		return True
-
-
 def remove_extra_cols(element):
-	cols_dict = {'eventid': 0, 'date': 1, 'time': 2, 'osid': 3, 'sapid': 4, 'typecon': 5, 'sapidhex': 6, 'terminal': 7,
-				'login': 8, 'tcode': 9, 'report': 10, 'client': 11, 'sessionid': 12, 'param': 13, 'fqdn': 14}
+	
 	if parsed_args.remove:
 		cols_for_remove = []
 		for col in parsed_args.remove:
@@ -72,12 +78,12 @@ def parse_file(filename):
 		block = f.read(block_size)
 		while block != '':
 			item = take_block(block[0:len(block):2])
-			if all([parsing_for_its_in_args([item[5]], parsed_args.typecon),
-					parsing_for_its_in_args([item[7], item[14]], parsed_args.terminal),
-					parsing_for_its_in_args([item[8]], parsed_args.login),
-					parsing_for_its_in_args([item[9], item[13]], parsed_args.tcode),
-					parsing_for_its_in_args([item[10]], parsed_args.report),
-					parsing_for_its_in_args([item[11]], parsed_args.client)]):
+			if all([parsing_for_its_in_args([item[cols_dict['typecon']]], parsed_args.typecon),
+					parsing_for_its_in_args([item[cols_dict['terminal']]], parsed_args.terminal),
+					parsing_for_its_in_args([item[cols_dict['login']]], parsed_args.login),
+					parsing_for_its_in_args([item[cols_dict['tcode']], item[cols_dict['param']]], parsed_args.tcode),
+					parsing_for_its_in_args([item[cols_dict['report']]], parsed_args.report),
+					parsing_for_its_in_args([item[cols_dict['client']]], parsed_args.client)]):
 				res.append(remove_extra_cols(item))
 			block = f.read(block_size)
 		f.close()
@@ -85,9 +91,6 @@ def parse_file(filename):
 
 
 def print_results(res):
-	res.insert(0, remove_extra_cols(
-		["EventID", "Date", "Time", "OSProcID", "SAPProcID", "TypeConn", "SAPIDHEX", "Terminal",
-		"Login", "T-Code", "Report", "Client", "SessionId", "Parameters", "FQDN"]))
 	for row in res:
 		for col in row:
 			print(f"{col}", end="\t")
@@ -95,9 +98,6 @@ def print_results(res):
 
 
 def csv_export(res, filename):
-	res.insert(0, remove_extra_cols(
-		["EventID", "Date", "Time", "OSProcID", "SAPProcID", "TypeConn", "SAPIDHEX", "Terminal",
-		"Login", "T-Code", "Report", "Client", "SessionId", "Parameters", "FQDN"]))
 	with open(f'{filename}.csv', 'w') as c:
 		for row in res:
 			for col in row:
@@ -111,12 +111,14 @@ def excel_export(res, filename):
 	number_of_sheets = (len(res) // rows_per_sheet) + 1
 	start_index = 0
 	end_index = rows_per_sheet
-	writer = pd.ExcelWriter(f'{filename}.xlsx', engine='xlsxwriter')
+# try:
+	writer = pd.ExcelWriter(f'{filename}.xlsx', engine='openpyxl')  # engine='openpyxl' , mode='a', if_sheet_exists='overlay' xlsxwriter
 	for i in range(number_of_sheets):
 		df = pd.DataFrame(list(res[start_index:end_index]))
 		df.to_excel(writer, index=False, header=False, sheet_name='sheet_' + str(i))
 		start_index = end_index
 		end_index = end_index + rows_per_sheet
+# finally:
 	writer.close()
 
 
@@ -153,6 +155,9 @@ def main():
 		result = result + parse_file(file_name)
 	
 	print("Collected rows:", len(result))
+	
+	result.insert(0, remove_extra_cols(list_of_cols))
+	
 	if parsed_args.print:
 		print_results(result)
 	else:
@@ -175,11 +180,10 @@ def main():
 
 if __name__ == '__main__':
 	parser = argparse.ArgumentParser()
-	parser.add_argument('-remove', metavar='eventid osid sapid sapidhex sessionid', nargs='*',
+	parser.add_argument('-remove', metavar='eventid osid sapid sapidhex termcut sessionid', nargs='*',
 						help='You can specify cols for remove. If you use this option, default removing will be '
-							'overwritten. Other cols: date time typecon terminal login tcode report client param '
-							'fqdn',
-						default=['eventid', 'osid', 'sapid', 'sapidhex', 'sessionid'])
+							'overwritten. Other cols: date time client login terminal tcode report typecon param',
+						default=['eventid', 'osid', 'sapid', 'sapidhex', 'termcut', 'sessionid'])
 	parser.add_argument('-terminal', metavar='31709', nargs='*',
 						help='It tries to search this in fields terminal and fqdn, as substring')
 	parser.add_argument('-login', metavar='SAPROOT CUASM7', nargs='*',
