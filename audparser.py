@@ -4,12 +4,14 @@ import sys
 import argparse
 import pandas as pd
 from openpyxl.cell.cell import ILLEGAL_CHARACTERS_RE
+from openpyxl import load_workbook
 
 cols_dict = {'date': 0, 'time': 1, 'client': 2, 'login': 3, 'terminal': 4, 'tcode': 5, 'report': 6,
 				'typecon': 7, 'param': 8, 'eventid': 9, 'osid': 10, 'sapid': 11, 'sapidhex': 12, 'termcut': 13, 'sessionid': 14}
-
 list_of_cols = ["Date", "Time", "Client", "Login", "Terminal", "T-Code", "Report", "TypeConn",
 				"Parameters", "EventID", "OSProcID", "SAPProcID", "SAPIDHEX", "termcut", "SessionId"]
+output_data = {}
+
 
 def take_block(block):
 	return [
@@ -29,6 +31,7 @@ def take_block(block):
 			block[32:40].strip(),                                       # Term-cut
 			block[115]                                                  # SessionID
 	]
+
 
 def parsing_for_its_in_args(its, args):
 	if args:
@@ -60,7 +63,6 @@ def detect_version(file_name):
 
 
 def remove_extra_cols(element):
-	
 	if parsed_args.remove:
 		cols_for_remove = []
 		for col in parsed_args.remove:
@@ -97,38 +99,55 @@ def print_results(res):
 		print()
 
 
-def csv_export(res, filename):
-	with open(f'{filename}.csv', 'w') as c:
-		for row in res:
-			for col in row:
-				c.write(f"{col};")
-			c.write("\n")
-		c.close()
+def csv_export(res):
+	for row in res:
+		for col in row:
+			output_data['cvs_export_file'].write(f"{col};")
+		output_data['cvs_export_file'].write("\n")
 
 
-def excel_export(res, filename):
+def excel_export(res):
 	rows_per_sheet = 1_000_000
-	number_of_sheets = (len(res) // rows_per_sheet) + 1
+	if 'sheet' not in output_data.keys():
+		output_data['sheet'] = 0
+	if 'start_row' not in output_data.keys():
+		output_data['start_row'] = 0
+	start_row_init = output_data['start_row']
 	start_index = 0
-	end_index = rows_per_sheet
-# try:
-	writer = pd.ExcelWriter(f'{filename}.xlsx', engine='openpyxl')  # engine='openpyxl' , mode='a', if_sheet_exists='overlay' xlsxwriter
-	for i in range(number_of_sheets):
+	end_index = rows_per_sheet - output_data['start_row']
+	while start_index <= len(res):
 		df = pd.DataFrame(list(res[start_index:end_index]))
-		df.to_excel(writer, index=False, header=False, sheet_name='sheet_' + str(i))
+		df.to_excel(output_data['xlsx_export_file'], index=False, startrow=output_data['start_row'], header=False,
+					sheet_name='sheet_' + str(output_data['sheet']))
 		start_index = end_index
 		end_index = end_index + rows_per_sheet
-# finally:
-	writer.close()
+		output_data['start_row'] = 0
+		output_data['sheet'] = output_data['sheet'] + 1
+	output_data['sheet'] = output_data['sheet'] - 1
+	output_data['start_row'] = (start_row_init + len(res)) % rows_per_sheet
 
 
-def export_result(res):
+def export_data(res):
+	if parsed_args.header and ('header' not in output_data.keys()):
+		res.insert(0, remove_extra_cols(list_of_cols))
+		output_data['header'] = True
+	
 	if parsed_args.csv:
-		csv_export(res, parsed_args.export_name)
-
+		if 'cvs_export_file' not in output_data.keys():
+			output_data['cvs_export_file'] = open(f'{parsed_args.export_name}.csv', parsed_args.overwrite)
+		csv_export(res)
 	if parsed_args.excel:
-		excel_export(res, parsed_args.export_name)
-
+		if 'xlsx_export_file' not in output_data.keys():
+			if os.path.isfile(f'{parsed_args.export_name}.xlsx') and parsed_args.overwrite == 'a':
+				output_data['xlsx_export_file'] = pd.ExcelWriter(f'{parsed_args.export_name}.xlsx', engine='openpyxl',
+																mode='a', if_sheet_exists='overlay')
+				output_data['workbook'] = load_workbook(f'{parsed_args.export_name}.xlsx')
+				sheet_names = output_data['workbook'].sheetnames
+				output_data['sheet'] = len(sheet_names) - 1
+				output_data['start_row'] = output_data['workbook'][sheet_names[-1]].max_row
+			else:
+				output_data['xlsx_export_file'] = pd.ExcelWriter(f'{parsed_args.export_name}.xlsx', engine='openpyxl')
+		excel_export(res)
 	if parsed_args.print:
 		print_results(res)
 
@@ -144,7 +163,6 @@ def main():
 					current_file = os.path.join(path, file)
 					if '.AUD' in current_file:
 						input_files.add(os.path.abspath(current_file))
-	
 	print("We start the parsing with: ", input_files)
 	if parsed_args.remove:
 		print("Cols for remove: ", parsed_args.remove)
@@ -161,23 +179,21 @@ def main():
 	if parsed_args.typecon:
 		print("Filter by type connection: ", parsed_args.typecon)
 	
-	if parsed_args.header:
-		result = [remove_extra_cols(list_of_cols)]
-	else:
-		result = []
-	
+	collected_rows = 0
 	for file_name in input_files:
-		result = result + parse_file(file_name)
+		result = parse_file(file_name)
+		collected_rows = collected_rows + len(result)
+		export_data(result)
 	
-	print("Collected rows:", len(result))
-	export_result(result)
-	
-	if not parsed_args.csv:
+	print("Collected rows:", collected_rows)
+	if parsed_args.csv:
+		output_data['cvs_export_file'].close()
+	else:
 		print("For exporting to csv plz use -csv option")
-	
-	if not parsed_args.excel:
+	if parsed_args.excel:
+		output_data['xlsx_export_file'].close()
+	else:
 		print("For exporting to excel plz use -excel option")
-		
 	if not parsed_args.print:
 		print("For printing on display plz use -print option")
 	
@@ -205,8 +221,13 @@ if __name__ == '__main__':
 	parser.add_argument('-excel', help='Enable export to excel with default name results.xlsx', action='store_true')
 	parser.add_argument('-csv', help='Enable export to csv with default name results.csv', action='store_true')
 	parser.add_argument('-export_name', metavar='results', help='use this name for file', default="results")
-	parser.add_argument('-overwrite', help='Overwrite existing files with parsing results, default: append', action='store_true')
+	parser.add_argument('-overwrite', help='Overwrite existing files with parsing results, default: append',
+						action='store_true')
 	parser.add_argument('-aud', nargs='*', help='parse all *.AUD from this directory or file, "./" by default',
 						default=".")
 	parsed_args = parser.parse_args()
+	if parsed_args.overwrite:
+		parsed_args.overwrite = 'w'
+	else:
+		parsed_args.overwrite = 'a'
 	main()
