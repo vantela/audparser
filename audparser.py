@@ -227,8 +227,5 @@ if __name__ == '__main__':
 	parser.add_argument('-aud', nargs='*', help='parse all *.AUD from this directory or file, "./" by default',
 						default=".")
 	parsed_args = parser.parse_args()
-	if parsed_args.overwrite:
-		parsed_args.overwrite = 'w'
-	else:
-		parsed_args.overwrite = 'a'
+	parsed_args.overwrite = 'w' if parsed_args.overwrite else 'a'
 	main()
