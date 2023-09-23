@@ -1,4 +1,5 @@
 #!/usr/bin/python3
+
 # -----------------------------------------------------------
 # Parser for *.AUD SAP ABAP files. With export to csv or excel.
 #
@@ -218,6 +219,7 @@ def export_data(res):
 
 def main():
 	input_files = set()
+	
 	# prepare file list for parsing
 	for name in parsed_args.aud:
 		if os.path.isfile(name):
@@ -228,6 +230,7 @@ def main():
 					current_file = os.path.join(path, file)
 					if '.AUD' in current_file:
 						input_files.add(os.path.abspath(current_file))
+						
 	# Print main information about this run
 	print("We start the parsing with: ", input_files)
 	if parsed_args.remove:
