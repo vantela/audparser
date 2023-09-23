@@ -1,5 +1,15 @@
 #!/usr/bin/python3
+# -----------------------------------------------------------
+# Parser for *.AUD SAP ABAP files. With export to csv or excel.
+#
+# audparser (C) 2023 Vsevolod Yablonsky
+# Released under GNU Public License (GPL)
+# email vantela@gmail.com
+# -----------------------------------------------------------
+#
 # Version 1.0
+#
+
 import os
 import sys
 import argparse
@@ -7,14 +17,23 @@ import pandas as pd
 from openpyxl.cell.cell import ILLEGAL_CHARACTERS_RE
 from openpyxl import load_workbook
 
+# Dictionary for type of columns.
 cols_dict = {'date': 0, 'time': 1, 'client': 2, 'login': 3, 'terminal': 4, 'tcode': 5, 'report': 6,
 				'typecon': 7, 'param': 8, 'eventid': 9, 'osid': 10, 'sapid': 11, 'sapidhex': 12, 'termcut': 13, 'sessionid': 14}
+# List for names of columns.
 list_of_cols = ["Date", "Time", "Client", "Login", "Terminal", "T-Code", "Report", "TypeConn",
 				"Parameters", "EventID", "OSProcID", "SAPProcID", "SAPIDHEX", "termcut", "SessionId"]
+# Dictionary for storing information about variables for output.
 output_data = {}
 
 
 def take_block(block):
+	"""
+	Convert the current string into a list of columns representing one row.
+	:param block: list data from file with block_size length
+	:return: one-row
+	:rtype: list
+	"""
 	return [
 			block[4:8] + '.' + block[8:10] + '.' + block[10:12],        # Date
 			block[12:14] + ':' + block[14:16] + ':' + block[16:18],     # Time
@@ -35,6 +54,13 @@ def take_block(block):
 
 
 def parsing_for_its_in_args(its, args):
+	"""
+	Check for pattern in column
+	:param its: columns list
+	:param args: patterns list
+	:return: True if pattern was found in cals, else False
+	:rtype: bool
+	"""
 	if args:
 		for arg in args:
 			for it in its:
@@ -46,24 +72,33 @@ def parsing_for_its_in_args(its, args):
 
 
 def detect_version(file_name):
-	h = "".join([hex(ord(c))[2:].zfill(2) for c in file_name.read(2)])
+	"""
+	It reads 2 first bytes from file_name, converts its from hex and match with known strings
+	:param file_name: TextIOWrapper
+	:return: block size for this file_name
+	:rtype: int
+	"""
+	version = "".join([hex(ord(c))[2:].zfill(2) for c in file_name.read(2)])
 	file_name.seek(0)
-	if h == '7141':
-		return 180  # '4.6c'
-	elif h == '3241':
-		return 200  # 'non-unicode'
-	elif h == '0032':
-		return 400  # 'unicode'
-	elif h == '3200':
-		return 400  # 'unicode'
-	elif h == '0478':
-		return 400  # 'unicode'
-	else:
-		print("Failed to detect block size: ", h)
-		sys.exit()
+	match version:
+		case '7141':
+			return 180  # '4.6c'
+		case '3241':
+			return 200  # 'non-unicode'
+		case '0032' | '3200' | '0478':
+			return 400  # 'unicode'
+		case _:
+			print("Failed to detect block size: ", version)
+			sys.exit()
 
 
 def remove_extra_cols(element):
+	"""
+	Remove extra columns from element
+	:param element: one row (list of columns)
+	:return: list   without columns from parsed_args.remove
+	:rtype: list
+	"""
 	if parsed_args.remove:
 		cols_for_remove = []
 		for col in parsed_args.remove:
@@ -75,10 +110,17 @@ def remove_extra_cols(element):
 
 
 def parse_file(filename):
+	"""
+	Open file and read it
+	:param filename: the next file name for reading
+	:return: list of columns
+	:rtype: list
+	"""
 	res = []
 	with open(filename, encoding='latin-1') as f:
 		block_size = detect_version(f)
 		block = f.read(block_size)
+		# We don't have non-unicode systems or 4.6c. Next code only for block_size = 400 and 200 symbols
 		while block != '':
 			item = take_block(block[0:len(block):2])
 			if all([parsing_for_its_in_args([item[cols_dict['typecon']]], parsed_args.typecon),
@@ -94,6 +136,10 @@ def parse_file(filename):
 
 
 def print_results(res):
+	"""
+	Print on display
+	:param res: list of columns
+	"""
 	for row in res:
 		for col in row:
 			print(f"{col}", end="\t")
@@ -101,6 +147,10 @@ def print_results(res):
 
 
 def csv_export(res):
+	"""
+	Write columns to output_data['cvs_export_file'] separated by semicolons
+	:param res: list of columns
+	"""
 	for row in res:
 		for col in row:
 			output_data['cvs_export_file'].write(f"{col};")
@@ -108,6 +158,11 @@ def csv_export(res):
 
 
 def excel_export(res):
+	"""
+	Write columns to output_data['xlsx_export_file'] Excel file.
+	Only 1 000 000 rows on sheet. Create a new sheet for the following rows..
+	:param res: list of columns
+	"""
 	rows_per_sheet = 1_000_000
 	if 'sheet' not in output_data.keys():
 		output_data['sheet'] = 0
@@ -124,12 +179,18 @@ def excel_export(res):
 		end_index = end_index + rows_per_sheet
 		output_data['start_row'] = 0
 		output_data['sheet'] = output_data['sheet'] + 1
+	# Save current sheet number and start_row for the next part of data
 	output_data['sheet'] = output_data['sheet'] - 1
 	output_data['start_row'] = (start_row_init + len(res)) % rows_per_sheet
 
 
 def export_data(res):
+	"""
+	Prepare some variables and run functions for print/cvs/excel output
+	:param res: list of columns
+	"""
 	if parsed_args.header and ('header' not in output_data.keys()):
+		# add header if it needs
 		res.insert(0, remove_extra_cols(list_of_cols))
 		output_data['header'] = True
 	
@@ -137,6 +198,7 @@ def export_data(res):
 		if 'cvs_export_file' not in output_data.keys():
 			output_data['cvs_export_file'] = open(f'{parsed_args.export_name}.csv', parsed_args.overwrite)
 		csv_export(res)
+		
 	if parsed_args.excel:
 		if 'xlsx_export_file' not in output_data.keys():
 			if os.path.isfile(f'{parsed_args.export_name}.xlsx') and parsed_args.overwrite == 'a':
@@ -149,12 +211,14 @@ def export_data(res):
 			else:
 				output_data['xlsx_export_file'] = pd.ExcelWriter(f'{parsed_args.export_name}.xlsx', engine='openpyxl')
 		excel_export(res)
+		
 	if parsed_args.print:
 		print_results(res)
 
 
 def main():
 	input_files = set()
+	# prepare file list for parsing
 	for name in parsed_args.aud:
 		if os.path.isfile(name):
 			input_files.add(os.path.abspath(name))
@@ -164,6 +228,7 @@ def main():
 					current_file = os.path.join(path, file)
 					if '.AUD' in current_file:
 						input_files.add(os.path.abspath(current_file))
+	# Print main information about this run
 	print("We start the parsing with: ", input_files)
 	if parsed_args.remove:
 		print("Cols for remove: ", parsed_args.remove)
@@ -180,6 +245,7 @@ def main():
 	if parsed_args.typecon:
 		print("Filter by type connection: ", parsed_args.typecon)
 	
+	# main loop for parse all files
 	collected_rows = 0
 	for file_name in input_files:
 		result = parse_file(file_name)
@@ -187,6 +253,7 @@ def main():
 		export_data(result)
 	
 	print("Collected rows:", collected_rows)
+	# close export files if it needs and hints about export parameters
 	if parsed_args.csv:
 		output_data['cvs_export_file'].close()
 	else:
